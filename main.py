@@ -3,56 +3,61 @@ import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
+from aiogram.filters import Command
 from aiohttp import web
 
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-AUTO_COMMENT_TEXT = "🗣 Обсуждаем пост в комментариях"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
-# ---------- Telegram logic ----------
+# ====== ХЭНДЛЕР ЛИЧНЫХ СООБЩЕНИЙ ======
+@dp.message(Command("start"))
+async def start_cmd(message: Message):
+    await message.answer("Бот запущен и работает.")
 
+
+# ====== ХЭНДЛЕР ПОСТОВ В КАНАЛЕ ======
 @dp.channel_post()
 async def on_channel_post(message: Message):
-    try:
-        await bot.send_message(
-            chat_id=message.chat.id,
-            text=AUTO_COMMENT_TEXT,
-            reply_to_message_id=message.message_id
-        )
-    except Exception as e:
-        print("Telegram error:", e)
+    print("NEW POST:", message.chat.id, message.message_id)
 
 
-# ---------- HTTP server (for Render) ----------
-
-async def healthcheck(request):
-    return web.Response(text="OK")
-
-
+# ====== HTTP-СЕРВЕР ДЛЯ RENDER ======
 async def start_http_server():
     app = web.Application()
+
+    async def healthcheck(request):
+        return web.Response(text="OK")
+
     app.router.add_get("/", healthcheck)
 
     runner = web.AppRunner(app)
     await runner.setup()
 
-    port = int(os.getenv("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
+    site = web.TCPSite(
+        runner,
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 10000))
+    )
     await site.start()
 
-    print(f"HTTP server started on port {port}")
 
-
-# ---------- Main ----------
-
+# ====== MAIN ======
 async def main():
+    # КРИТИЧНО: удаляем webhook
+    await bot.delete_webhook(drop_pending_updates=True)
+
+    # Запускаем HTTP-сервер (Render требует)
     await start_http_server()
+
+    # Запускаем polling
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
